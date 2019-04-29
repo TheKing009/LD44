@@ -1,0 +1,15 @@
+images {
+  image: "/Assets/images/level1-background.png"
+}
+images {
+  image: "/Assets/images/level1-foreground.png"
+}
+images {
+  image: "/Assets/images/level1-principal.png"
+}
+images {
+  image: "/Assets/images/textbox.png"
+}
+margin: 0
+extrude_borders: 2
+inner_padding: 0

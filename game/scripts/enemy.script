@@ -1,0 +1,178 @@
+local anims = require "game.modules.anims"
+local broadcast = require "ludobits.m.broadcast"
+
+--speed of the enemy
+go.property("speed", 50)
+go.property("min_distance", 15)
+go.property("health", 5)
+--private
+go.property("punching", false)
+go.property("target", hash("player"))
+go.property("added", true)
+
+--collision groups
+local WALL = hash("wall")
+local PLAYER = hash("player")
+
+--constants
+local NORTH = vmath.vector3(0, 1, 0)					--the north vector
+local CONTACT_POINT_RESPONSE = hash("contact_point_response")
+local COLLISION_RESPONSE = hash("collision_response")
+local ADDED = hash("added")
+
+local X = 25
+
+local function flip(diff)
+	if diff.x < 0 then
+		sprite.set_hflip("#sprite", true)
+	else
+		sprite.set_hflip("#sprite", false)
+	end
+end
+
+local function play_anim(self, anim, f)
+	if self.anim ~= anim then
+		self.anim = anim
+		sprite.play_flipbook("#sprite", anim, f)
+	end
+end
+
+local function take_damage(self, damage)
+	if self.health > 0 then
+		self.health = math.max(self.health - damage, 0)
+		if self.health == 0 then
+			msg.post("/game#game", "enemy_death")
+			play_anim(self, hash("die"))
+			if self.target == hash("/player") then
+				broadcast.send("remove")
+			end
+			
+			timer.delay(3, false, function()
+				go.animate("#sprite", "tint", go.PLAYBACK_ONCE_FORWARD, vmath.vector4(0), go.EASING_LINEAR, 1, 0, function()
+					go.delete()
+				end)
+			end)	
+		end
+	end
+end
+
+local function handle_anim(self)
+	if self.health == 0 then
+		return
+	end
+	
+	if vmath.length(self.velocity) ~= 0 and not self.punching then
+		play_anim(self, hash("walk"))
+	elseif self.punching then
+		self.velocity = vmath.vector3(0)
+		play_anim(self, hash("punch"), function()
+			play_anim(self, hash("walk"))
+			self.punching = false
+		end)
+	else
+		--play_anim(self, hash("idle"))
+	end
+end
+
+function init(self)
+	self.velocity = vmath.vector3()
+	self.correction = vmath.vector3()
+
+	self.take_damage = true
+	self.target = hash("/player")
+
+	self.added = false
+
+	self.anims = anims.create(self)
+end
+
+function final(self)
+	-- Add finalization code here
+	-- Remove this function if not needed
+end
+
+function update(self, dt)
+	if self.health == 0 then
+		return
+	end
+
+	local e = go.get(msg.url(nil, hash("/player"), "player"), "enemies_around")
+	if e < 2 then
+		self.target = hash("/player")
+	elseif not self.added then
+		self.target = hash("/safe")
+	end
+	handle_anim(self)
+	
+	local position = go.get_position()
+	position = position + self.velocity * dt
+	go.set_position(position)
+
+	local player_pos = go.get_position(self.target)
+	local position = go.get_position()
+
+	if self.target == hash("/player") then
+		player_pos.x = player_pos.x + X
+		X = -X
+		print(player_pos.x, go.get_position(self.target))
+	end
+
+	local diff = player_pos - position
+
+	local angle = math.atan2(-diff.x, diff.y)
+	local rotation = vmath.quat_rotation_z(angle)
+
+	self.velocity = vmath.rotate(rotation, NORTH) * self.speed
+
+	if vmath.length(diff) > self.min_distance then
+		local position = go.get_position()
+		position = position + self.velocity * dt
+		go.set_position(position)
+	end
+
+	diff = go.get_position(self.target) - position
+
+	self.correction = vmath.vector3()
+	self.velocity = vmath.vector3()
+	flip(diff)
+end
+
+function on_message(self, message_id, message, sender)
+	if message_id == CONTACT_POINT_RESPONSE then
+		if message.group == WALL then
+			local proj = vmath.dot(self.correction, message.normal)
+			local comp = (message.distance - proj) * message.normal
+			self.correction = self.correction + comp
+			go.set_position(go.get_position(id) + comp) --seperate collisions
+			proj = vmath.dot(self.velocity, message.normal)
+			if proj < 0 then
+				self.velocity = self.velocity - proj * message.normal
+			end
+		end
+	elseif message_id == COLLISION_RESPONSE then
+		if message.group == PLAYER then
+			local punching = go.get(msg.url(nil, message.other_id, "player"), "punching")
+			if punching then
+				if self.take_damage then
+					print("hit")
+					take_damage(self, 1)
+					self.take_damage = false
+					timer.delay(0.5, false, function()
+						self.take_damage = true
+					end)
+				end
+			else
+				self.punching = true
+			end
+		end
+	end
+end
+
+function on_input(self, action_id, action)
+	self.anims.on_input(self, action_id, action)
+end
+
+function on_reload(self)
+	-- Add reload-handling code here
+	-- Remove this function if not needed
+end

@@ -1,0 +1,64 @@
+local printer = require "printer.printer"
+local styles = require "game.modules.styles"
+
+
+local texts = {
+	"One Day in Money Town",
+	"{hard} Black Money: {/}{n} I am coming to take your {hard}MONEYY!!",
+	"{hard} Mr. Money: {/}{n} No, not my {hard}MONEYY!!",
+	"{/}I must protect my money!"
+}
+
+
+local function next_print(self)
+	local text = texts[self.index]
+	self.printer:print(text)
+end
+
+function init(self)
+	printer.add_styles(styles)
+
+	msg.post(".", "acquire_input_focus")
+	
+	self.printer = printer.new(self, "printer")
+	--self.printer:print("{hard}This{/} is just simple text")
+	--self.printer:print("Hello")
+
+	self.index = 1
+
+	timer.delay(0.1, false, function()
+		next_print(self)
+	end)
+end
+
+function final(self)
+	self.printer:final()
+end
+
+function update(self, dt)
+	self.printer:update(dt)
+end
+
+function on_message(self, message_id, message, sender)
+	-- Add message-handling code here
+	-- Remove this function if not needed
+end
+
+function on_input(self, action_id, action)
+	if action_id == hash("touch") and action.pressed then
+		if self.printer.is_print then
+			self.printer:instant_appear()
+		else
+			self.index = self.index + 1
+			if self.index > #texts then
+				self.index = 1
+			end
+			next_print(self)
+		end
+	end
+end
+
+function on_reload(self)
+	-- Add input-handling code here
+	-- Remove this function if not needed
+end
